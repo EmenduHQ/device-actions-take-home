@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: device_actions
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d device_actions"]
+      interval: 2s
+      retries: 20
+
+  fake-mdm:
+    image: node:22-alpine
+    working_dir: /srv
+    command: ["node", "server.mjs"]
+    volumes:
+      - ./fake-mdm:/srv:ro
+    environment:
+      PORT: "4010"
+      FAKE_MDM_CHAOS: "1"
+    ports:
+      - "4010:4010"
