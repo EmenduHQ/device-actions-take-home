@@ -1,82 +1,50 @@
 # Emendu take-home: device actions
 
-Thanks for taking the time. Everything you need is on this page. You don't need to email anyone to get started.
+At Emendu, Claude Code writes much of our code. What we hire for is the person who keeps a codebase **easy to grow and easy to understand, for humans and for agents**. This exercise looks for that.
 
-## Context
+## The problem
 
-Emendu manages laptops for companies. To act on a machine remotely (restart it, run a script, wipe it), we go through an external MDM provider. That provider is slow, sometimes fails, and doesn't always tell you whether an action worked. We might also switch providers one day.
+We manage company laptops through an external MDM provider. It is slow, it sometimes fails, and it doesn't always tell you whether an action worked. We may switch providers. `fake-mdm` stands in for it. Read [`FAKE_MDM.md`](FAKE_MDM.md) first.
 
-## Your mission
+## Build
 
-Build the backend module that lets us **order a reboot on a device and know how it ended**.
+**A small feature.** Order a reboot on a device and find out how it ended.
 
-## What you get
+- `POST /api/v1/devices/:deviceId/actions` with `{ "type": "REBOOT" }` and an `Idempotency-Key` header. It answers `202 { actionId, status }`.
+  - A device must never be rebooted twice for the same key.
+  - The same key with a different body answers `422`.
+  - An offline device ends as `REJECTED`, and nothing is sent.
+- **States:** `PENDING → SENT → EXECUTED | FAILED | UNVERIFIED`, plus `REJECTED`. An invalid transition is never written.
+- A background verifier settles each action from the activity feed. With no answer after 2 minutes, the action becomes `UNVERIFIED`.
+- `GET /api/v1/actions/:id` returns the state, ISO-8601 timestamps and the transition history. Nothing from the provider leaks out.
 
-- This repo:
-  - TypeScript, strict mode, with `make verify` running lint (`no-explicit-any`), typecheck and tests
-  - Postgres 16 and the fake provider in `docker-compose.yml`
-  - `src/mdm/token.ts`, a ready-made OAuth token helper
-- **Any TypeScript/Node framework is fine:** NestJS, Fastify, Express, Hono… Add what you need. We don't score framework idioms.
-- `fake-mdm`, our stand-in for the real provider. **Read [`FAKE_MDM.md`](FAKE_MDM.md) first.**
-- No real credentials. Everything runs locally.
+**A repo that can grow.** Imagine that from tomorrow, agents add the next 50 features to it: wipe, lock, install software, other providers.
 
-```bash
-cp .env.example .env
-docker compose up -d   # Postgres on :5432, fake MDM on :4010
-npm install
-make verify
-```
+- **The architecture is visible:** you can tell from the folder tree what the system does and where each piece goes.
+- **Its rules are enforced, not just written.** Make the important ones fail `make verify`: layer boundaries, a domain that doesn't depend on the provider or the framework, and "an action is stored before it is sent". Choose your own tools: lint rules, architecture tests, scripts, Claude Code hooks, skills, `CLAUDE.md`/`AGENTS.md`.
+- **The flow is traceable.** Model what happens to an action as events, so that a person or an agent can follow who did what and what reacted to it.
 
-## Requirements (core)
-
-1. **`POST /api/v1/devices/:deviceId/actions`**, with body `{ "type": "REBOOT" }` and an `Idempotency-Key` header.
-   - Store the action **before** calling the provider. Answer `202 { actionId, status }`.
-   - Same key and same body: return the same action. The machine must never be rebooted twice.
-   - Same key with a different body: answer `422`.
-2. If the device is offline (`offline: true`, or `lastContact` more than 5 minutes old), answer `202` with `status: "REJECTED"` and send nothing.
-3. **States:** `PENDING → SENT → EXECUTED | FAILED | UNVERIFIED`, plus `REJECTED`. Every transition is guarded: an invalid transition must never be written.
-4. **A background verifier** settles each sent action from the provider's activity feed, using the success and failure signatures in `FAKE_MDM.md`.
-   - Activity that came before your dispatch, belongs to another device or belongs to another action must never count.
-   - With no answer after **2 minutes**, the action becomes `UNVERIFIED`.
-5. **`GET /api/v1/actions/:id`** returns the state, ISO-8601 timestamps and the history of transitions.
-   - Our API must **not** expose the provider's names, ids or fields.
-   - Your domain should not depend on the provider or on the framework. Switching providers should only touch the adapter.
-6. **Tests** for the state logic and the idempotency, against an in-memory fake adapter (not the container).
-
-**Extras** (optional; they only break ties):
-- safe with two verifier instances
-- backoff that respects `Retry-After`
-- `409` when a reboot is already in flight for that device
-
-## Time
-
-The exercise is designed for **about 3 hours**. You have **5 days** from when you receive it, so pick the moment that suits you. If you don't get to everything, prioritise and explain your choices. That counts too.
-
-## AI
-
-Use it as you would at work. We assess whether you understand every line and can defend it. In the next session you'll extend your own code live.
+Use AI as you would at work. We don't grade how much code you write by hand. We grade the fundamentals and the patterns: what you decided, what you enforced and why.
 
 ## Deliver
 
-**Keep your work private.** Don't fork this repo: forks of a public repo are public.
+- **Time:** about 3–4 h, within 5 days.
+- **Where:** a **private** repo created with **Use this template**. Don't fork it.
+  - Commit as you go.
+  - Add `dealmengor` as a collaborator.
+  - Reply to the email with the link.
+- **What:**
+  - `make verify` passes on a clean clone.
+  - [`DECISIONS.md`](DECISIONS.md) is filled in, one page at most.
 
-1. Click **Use this template → Create a new repository → Private**.
-2. Commit as you go. Your history helps us.
-3. Fill in [`DECISIONS.md`](DECISIONS.md), one page at most.
-4. Before the deadline, add **`dealmengor`** as a collaborator (Settings → Collaborators) and reply to the email you received with the repo link.
+```bash
+cp .env.example .env && docker compose up -d && npm install && make verify
+```
 
-Before you send it:
-- `docker compose up` and `make verify` pass on a clean clone.
-- There are no secrets in the repo.
+## Next
 
-We reply within **3 working days** of your delivery.
-
-## What happens next
-
-If we move forward, the next step is a **90-minute session at our office in Valencia**. We'll:
-- talk through your `DECISIONS.md`
-- extend your code together
-- read a few logs
-- point your adapter at a **real MDM sandbox** and reboot a real test laptop with your code
-
-Bring your laptop with the repo running.
+The next step is a session in Valencia. In it we'll:
+- extend your repo
+- break one of your rules on purpose to see whether your guardrails catch it
+- point your adapter at a real MDM sandbox and reboot a real laptop
+- discuss the open questions in [`QUESTIONS.md`](QUESTIONS.md)
